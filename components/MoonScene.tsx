@@ -2,9 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import * as THREE from "three";
-
 import { Canvas } from "@react-three/fiber";
-
 import {
   TrackballControls,
   useGLTF,
@@ -15,15 +13,12 @@ import LandingSitePanel from "./LandingSitePanel";
 import LolaTerrain from "./LolaTerrain";
 import SunMarker from "./SunMarker";
 
-
-// ======================================================
-// MOON
-// ======================================================
+/* =========================================================
+   MOON MODEL
+========================================================= */
 
 function Moon() {
-  const { scene } = useGLTF(
-    "/models/moon.glb"
-  );
+  const { scene } = useGLTF("/models/moon.glb");
 
   return (
     <primitive
@@ -34,29 +29,26 @@ function Moon() {
   );
 }
 
-
-// ======================================================
-// CONVERT LAT/LON TO 3D DIRECTION
-// ======================================================
+/* =========================================================
+   LAT/LON → 3D VECTOR
+========================================================= */
 
 function latLonToVector(
   latitude: number,
   longitude: number
 ) {
-  const lat =
-    THREE.MathUtils.degToRad(latitude);
-
-  const lon =
-    THREE.MathUtils.degToRad(longitude);
+  const lat = THREE.MathUtils.degToRad(latitude);
+  const lon = THREE.MathUtils.degToRad(longitude);
 
   const x =
-    Math.cos(lat) * Math.cos(lon);
+    Math.cos(lat) *
+    Math.cos(lon);
 
-  const y =
-    Math.sin(lat);
+  const y = Math.sin(lat);
 
   const z =
-    Math.cos(lat) * Math.sin(lon);
+    Math.cos(lat) *
+    Math.sin(lon);
 
   return new THREE.Vector3(
     x,
@@ -65,16 +57,14 @@ function latLonToVector(
   ).normalize();
 }
 
-
-// ======================================================
-// MAIN SCENE
-// ======================================================
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
 
 export default function MoonScene() {
-
-  // ----------------------------------------------------
-  // LANDING SITE
-  // ----------------------------------------------------
+  /* -------------------------------------------------------
+     LANDING SITE
+  ------------------------------------------------------- */
 
   const [latitude, setLatitude] =
     useState(-89.5);
@@ -82,53 +72,52 @@ export default function MoonScene() {
   const [longitude, setLongitude] =
     useState(0);
 
+  /* -------------------------------------------------------
+     SIMULATION TIME
 
-  // ----------------------------------------------------
-  // SIMULATION TIME
-  // ----------------------------------------------------
+     Start with null so Next.js does not render
+     new Date() during server/client hydration.
+  ------------------------------------------------------- */
 
   const [simulationTime, setSimulationTime] =
-    useState(
-      new Date().toISOString()
-    );
+    useState<string | null>(null);
 
-
-  // ----------------------------------------------------
-  // SUN POSITION
-  // ----------------------------------------------------
+  /* -------------------------------------------------------
+     SUN DATA
+  ------------------------------------------------------- */
 
   const [sunPosition, setSunPosition] =
-    useState<
-      [number, number, number] | null
-    >(null);
-
-
-  // ----------------------------------------------------
-  // SOLAR ELEVATION
-  // ----------------------------------------------------
+    useState<[number, number, number] | null>(
+      null
+    );
 
   const [solarElevation, setSolarElevation] =
     useState<number | null>(null);
 
-
-  // ----------------------------------------------------
-  // LOADING
-  // ----------------------------------------------------
-
   const [loadingSun, setLoadingSun] =
     useState(false);
 
-
-  // ====================================================
-  // FETCH SUN FROM JPL
-  // ====================================================
+  /* =======================================================
+     SET INITIAL TIME AFTER COMPONENT MOUNTS
+  ======================================================= */
 
   useEffect(() => {
+    setSimulationTime(
+      new Date().toISOString()
+    );
+  }, []);
+
+  /* =======================================================
+     GET SUN POSITION FROM JPL HORIZONS
+  ======================================================= */
+
+  useEffect(() => {
+    if (!simulationTime) {
+      return;
+    }
 
     async function getSunPosition() {
-
       try {
-
         setLoadingSun(true);
 
         console.log(
@@ -136,19 +125,24 @@ export default function MoonScene() {
           simulationTime
         );
 
-        const response =
-          await fetch(
-            `/api/ephemeris?time=${encodeURIComponent(
-              simulationTime
-            )}`
+        const response = await fetch(
+          `/api/ephemeris?time=${encodeURIComponent(
+            simulationTime
+          )}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            `API request failed: ${response.status}`
           );
+        }
 
-        const data =
-          await response.json();
-
+        const data = await response.json();
 
         if (!data.success) {
-
           console.error(
             "❌ JPL error:",
             data.error
@@ -157,23 +151,17 @@ export default function MoonScene() {
           return;
         }
 
+        const result = data.result;
 
-        const result =
-          data.result;
+        /* -------------------------------------------------
+           Extract X Y Z from JPL Horizons response
+        ------------------------------------------------- */
 
-
-        // ------------------------------------------------
-        // Extract X Y Z
-        // ------------------------------------------------
-
-        const match =
-          result.match(
-            /X\s*=\s*([+-]?\d+(?:\.\d+)?(?:E[+-]?\d+)?)\s+Y\s*=\s*([+-]?\d+(?:\.\d+)?(?:E[+-]?\d+)?)\s+Z\s*=\s*([+-]?\d+(?:\.\d+)?(?:E[+-]?\d+)?)/i
-          );
-
+        const match = result.match(
+          /X\s*=\s*([+-]?\d+(?:\.\d+)?(?:E[+-]?\d+)?)\s+Y\s*=\s*([+-]?\d+(?:\.\d+)?(?:E[+-]?\d+)?)\s+Z\s*=\s*([+-]?\d+(?:\.\d+)?(?:E[+-]?\d+)?)/i
+        );
 
         if (!match) {
-
           console.error(
             "❌ Could not parse JPL coordinates"
           );
@@ -181,20 +169,28 @@ export default function MoonScene() {
           return;
         }
 
+        const x = Number(match[1]);
+        const y = Number(match[2]);
+        const z = Number(match[3]);
 
-        const x =
-          Number(match[1]);
+        if (
+          !Number.isFinite(x) ||
+          !Number.isFinite(y) ||
+          !Number.isFinite(z)
+        ) {
+          console.error(
+            "❌ Invalid Sun coordinates:",
+            x,
+            y,
+            z
+          );
 
-        const y =
-          Number(match[2]);
+          return;
+        }
 
-        const z =
-          Number(match[3]);
-
-
-        // ------------------------------------------------
-        // Sun direction
-        // ------------------------------------------------
+        /* -------------------------------------------------
+           Convert Sun coordinates to direction
+        ------------------------------------------------- */
 
         const sunVector =
           new THREE.Vector3(
@@ -203,10 +199,9 @@ export default function MoonScene() {
             z
           ).normalize();
 
-
-        // ------------------------------------------------
-        // Visualization position
-        // ------------------------------------------------
+        /* -------------------------------------------------
+           Put Sun visually outside Moon
+        ------------------------------------------------- */
 
         const distance = 6;
 
@@ -220,13 +215,11 @@ export default function MoonScene() {
           sunVector.z * distance,
         ];
 
-
         setSunPosition(position);
 
-
-        // ------------------------------------------------
-        // Landing-site surface normal
-        // ------------------------------------------------
+        /* -------------------------------------------------
+           Calculate solar elevation at landing site
+        ------------------------------------------------- */
 
         const siteNormal =
           latLonToVector(
@@ -234,22 +227,8 @@ export default function MoonScene() {
             longitude
           );
 
-
-        // ------------------------------------------------
-        // Solar elevation
-        //
-        // Dot product:
-        //
-        //  1  = directly overhead
-        //  0  = horizon
-        // -1  = below horizon
-        // ------------------------------------------------
-
         const dot =
-          siteNormal.dot(
-            sunVector
-          );
-
+          siteNormal.dot(sunVector);
 
         const clampedDot =
           THREE.MathUtils.clamp(
@@ -258,541 +237,403 @@ export default function MoonScene() {
             1
           );
 
-
         const elevation =
           THREE.MathUtils.radToDeg(
             Math.asin(clampedDot)
           );
 
-
-        setSolarElevation(
-          elevation
-        );
-
+        setSolarElevation(elevation);
 
         console.log(
           "🌞 Solar elevation:",
           elevation
         );
-
       } catch (error) {
-
         console.error(
           "❌ Sun calculation failed:",
           error
         );
 
+        setSunPosition(null);
+        setSolarElevation(null);
       } finally {
-
         setLoadingSun(false);
-
       }
-
     }
 
-
     getSunPosition();
-
   }, [
     simulationTime,
     latitude,
     longitude,
   ]);
 
+  /* =======================================================
+     SUNLIGHT STATUS
+  ======================================================= */
 
-  // ====================================================
-  // SUNLIGHT STATUS
-  // ====================================================
+  const sunlightStatus = useMemo(() => {
+    if (solarElevation === null) {
+      return "Calculating...";
+    }
 
-  const sunlightStatus =
-    useMemo(() => {
+    if (solarElevation > 5) {
+      return "SUNLIGHT";
+    }
 
-      if (
-        solarElevation === null
-      ) {
-        return "Calculating...";
-      }
+    if (solarElevation >= 0) {
+      return "LOW SUN";
+    }
 
-      if (
-        solarElevation > 5
-      ) {
-        return "SUNLIGHT";
-      }
+    return "DARKNESS";
+  }, [solarElevation]);
 
-      if (
-        solarElevation >= 0
-      ) {
-        return "LOW SUN";
-      }
+  /* =======================================================
+     CURRENT DATE
 
-      return "DARKNESS";
+     Use Unix epoch while waiting for the initial
+     client-side time to avoid hydration mismatch.
+  ======================================================= */
 
-    }, [
-      solarElevation,
-    ]);
-
-
-  // ====================================================
-  // STATUS DISPLAY
-  // ====================================================
-
-  const statusClass =
-    sunlightStatus === "SUNLIGHT"
-      ? "text-green-400"
-      : sunlightStatus === "LOW SUN"
-      ? "text-yellow-400"
-      : sunlightStatus === "DARKNESS"
-      ? "text-red-400"
-      : "text-white";
-
-
-  // ====================================================
-  // TIME SLIDER
-  // ====================================================
-
-  const currentDate =
-    new Date(simulationTime);
-
+  const currentDate = simulationTime
+    ? new Date(simulationTime)
+    : new Date(0);
 
   const sliderValue =
     currentDate.getTime();
-
 
   const minTime =
     sliderValue -
     24 * 60 * 60 * 1000;
 
-
   const maxTime =
     sliderValue +
     24 * 60 * 60 * 1000;
 
+  /* =======================================================
+     DATE SLIDER
+  ======================================================= */
 
-  // ====================================================
-  // SCENE
-  // ====================================================
+  function handleTimeChange(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const value = Number(
+      event.target.value
+    );
+
+    if (!Number.isFinite(value)) {
+      return;
+    }
+
+    setSimulationTime(
+      new Date(value).toISOString()
+    );
+  }
+
+  /* =======================================================
+     RESET TO NOW
+  ======================================================= */
+
+  function handleNow() {
+    setSimulationTime(
+      new Date().toISOString()
+    );
+  }
+
+  /* =======================================================
+     LOCATION CHANGE
+  ======================================================= */
+
+  function handleLocationChange(
+    lat: number,
+    lon: number
+  ) {
+    setLatitude(lat);
+    setLongitude(lon);
+  }
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-
-    <div className="relative h-screen w-full bg-black">
+    <div className="relative w-full h-screen overflow-hidden bg-black">
 
       {/* =================================================
-          LANDING SITE PANEL
+          LOCATION PANEL
       ================================================= */}
 
       <LandingSitePanel
-
-        onLocationChange={(
-          lat,
-          lon
-        ) => {
-
-          setLatitude(lat);
-
-          setLongitude(lon);
-
-        }}
-
+        onLocationChange={
+          handleLocationChange
+        }
       />
 
-
       {/* =================================================
-          3D CANVAS
+          3D MOON SCENE
       ================================================= */}
 
       <Canvas
-
         camera={{
-          position: [
-            0,
-            0,
-            4
-          ],
-
+          position: [0, 0, 4],
           fov: 45,
-
           near: 0.01,
-
           far: 1000,
         }}
-
         gl={{
           antialias: true,
         }}
-
       >
 
         {/* -----------------------------------------------
-            Ambient light
-        ------------------------------------------------ */}
+            BASIC LIGHTING
+        ----------------------------------------------- */}
 
-        <ambientLight
-          intensity={0.15}
-        />
-
+        <ambientLight intensity={0.15} />
 
         {/* -----------------------------------------------
-            REAL JPL SUN LIGHT
-        ------------------------------------------------ */}
+            SUN LIGHT
+        ----------------------------------------------- */}
 
         {sunPosition && (
-
           <directionalLight
-
-            position={
-              sunPosition
-            }
-
+            position={sunPosition}
             intensity={3}
-
           />
-
         )}
-
 
         {/* -----------------------------------------------
             MOON
-        ------------------------------------------------ */}
+        ----------------------------------------------- */}
 
         <Moon />
 
-
         {/* -----------------------------------------------
-            LOLA TERRAIN
-        ------------------------------------------------ */}
+            LOLA SOUTH POLE TERRAIN
 
-        <LolaTerrain />
+            IMPORTANT:
+            Pass the currently selected latitude
+            and longitude.
+        ----------------------------------------------- */}
 
-
-        {/* -----------------------------------------------
-            LANDING MARKER
-        ------------------------------------------------ */}
-
-        <LandingMarker
-
+        <LolaTerrain
           latitude={latitude}
-
           longitude={longitude}
-
         />
 
+        {/* -----------------------------------------------
+            LANDING SITE MARKER
+        ----------------------------------------------- */}
+
+        <LandingMarker
+          latitude={latitude}
+          longitude={longitude}
+        />
 
         {/* -----------------------------------------------
-            SUN
-        ------------------------------------------------ */}
+            SUN MARKER
+        ----------------------------------------------- */}
 
         {sunPosition && (
-
           <SunMarker
-
-            position={
-              sunPosition
-            }
-
+            position={sunPosition}
           />
-
         )}
 
-
         {/* -----------------------------------------------
-            FREE 360° CAMERA
-        ------------------------------------------------ */}
+            360° CAMERA CONTROLS
+
+            Allows:
+            - Full rotation
+            - Zoom
+            - Pan
+        ----------------------------------------------- */}
 
         <TrackballControls
-
           rotateSpeed={3}
-
           zoomSpeed={1.2}
-
           panSpeed={0.8}
-
           noZoom={false}
-
           noPan={false}
-
           staticMoving={false}
-
           dynamicDampingFactor={0.15}
-
           minDistance={0.1}
-
           maxDistance={100}
-
         />
 
       </Canvas>
 
-
       {/* =================================================
-          SIMULATION CONTROL PANEL
+          TOP INFORMATION PANEL
       ================================================= */}
 
-      <div className="
-        absolute
-        bottom-5
-        left-1/2
-        w-[min(700px,90%)]
-        -translate-x-1/2
-        rounded-2xl
-        border
-        border-white/10
-        bg-black/75
-        p-5
-        text-white
-        shadow-2xl
-        backdrop-blur-xl
-      ">
+      <div className="absolute top-5 left-5 z-20 rounded-xl bg-black/70 backdrop-blur-md px-5 py-4 text-white shadow-xl">
+
+        <div className="text-lg font-bold">
+          Lunar Landing Site Navigator
+        </div>
+
+        <div className="mt-1 text-sm text-gray-300">
+          NASA South Pole Mission Visualizer
+        </div>
+
+        <div className="mt-3 text-sm">
+          <span className="text-gray-400">
+            Latitude:
+          </span>{" "}
+          {latitude.toFixed(4)}°
+        </div>
+
+        <div className="text-sm">
+          <span className="text-gray-400">
+            Longitude:
+          </span>{" "}
+          {longitude.toFixed(4)}°
+        </div>
+
+      </div>
+
+      {/* =================================================
+          SUN INFORMATION PANEL
+      ================================================= */}
+
+      <div className="absolute top-5 right-5 z-20 min-w-[230px] rounded-xl bg-black/70 backdrop-blur-md px-5 py-4 text-white shadow-xl">
+
+        <div className="mb-2 text-lg font-bold">
+          ☀ Sun Conditions
+        </div>
+
+        <div className="text-sm">
+          <span className="text-gray-400">
+            Status:
+          </span>{" "}
+          <span
+            className={
+              solarElevation !== null &&
+              solarElevation > 5
+                ? "text-yellow-300"
+                : "text-white"
+            }
+          >
+            {sunlightStatus}
+          </span>
+        </div>
+
+        <div className="mt-1 text-sm">
+          <span className="text-gray-400">
+            Solar Elevation:
+          </span>{" "}
+          {solarElevation !== null
+            ? `${solarElevation.toFixed(2)}°`
+            : loadingSun
+            ? "Calculating..."
+            : "--"}
+        </div>
+
+        <div className="mt-1 text-xs text-gray-500">
+          Source: NASA/JPL Horizons
+        </div>
+
+      </div>
+
+      {/* =================================================
+          TIME CONTROL
+      ================================================= */}
+
+      <div className="absolute bottom-5 left-1/2 z-20 w-[90%] max-w-3xl -translate-x-1/2 rounded-xl bg-black/75 backdrop-blur-md px-6 py-4 text-white shadow-xl">
 
         {/* -----------------------------------------------
-            TIME
-        ------------------------------------------------ */}
+            DATE
+        ----------------------------------------------- */}
 
-        <div className="
-          flex
-          items-center
-          justify-between
-          gap-4
-        ">
+        <div className="mb-3 flex items-center justify-between">
 
           <div>
-
-            <div className="
-              text-xs
-              uppercase
-              tracking-wider
-              text-gray-400
-            ">
+            <div className="text-sm text-gray-400">
               Simulation Time
             </div>
 
-            <div className="
-              mt-1
-              text-lg
-              font-semibold
-            ">
-              {currentDate.toUTCString()}
+            <div className="text-base font-semibold">
+              {simulationTime
+                ? currentDate.toUTCString()
+                : "Loading time..."}
             </div>
-
           </div>
 
+          {/* -------------------------------------------
+              NOW BUTTON
+          ------------------------------------------- */}
 
           <button
-
-            onClick={() =>
-              setSimulationTime(
-                new Date()
-                  .toISOString()
-              )
-            }
-
-            className="
-              rounded-lg
-              bg-white/10
-              px-3
-              py-2
-              text-sm
-              hover:bg-white/20
-            "
-
+            type="button"
+            onClick={handleNow}
+            className="rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
           >
             NOW
-
           </button>
 
         </div>
 
-
         {/* -----------------------------------------------
             TIME SLIDER
-        ------------------------------------------------ */}
+        ----------------------------------------------- */}
 
         <input
-
           type="range"
-
           min={minTime}
-
           max={maxTime}
-
           value={sliderValue}
-
-          onChange={(event) => {
-
-            const value =
-              Number(
-                event.target.value
-              );
-
-            setSimulationTime(
-              new Date(value)
-                .toISOString()
-            );
-
-          }}
-
-          className="
-            mt-5
-            w-full
-          "
-
+          onChange={handleTimeChange}
+          disabled={!simulationTime}
+          className="w-full cursor-pointer"
         />
 
+        {/* -----------------------------------------------
+            TIME LABELS
+        ----------------------------------------------- */}
 
-        <div className="
-          mt-2
-          flex
-          justify-between
-          text-xs
-          text-gray-500
-        ">
-
+        <div className="mt-1 flex justify-between text-xs text-gray-500">
           <span>
             -24 hours
           </span>
 
           <span>
-            +24 hours
+            Current
           </span>
 
+          <span>
+            +24 hours
+          </span>
         </div>
 
+      </div>
 
-        {/* -----------------------------------------------
-            SOLAR INFORMATION
-        ------------------------------------------------ */}
+      {/* =================================================
+          BOTTOM LEFT STATUS
+      ================================================= */}
 
-        <div className="
-          mt-5
-          grid
-          grid-cols-3
-          gap-3
-        ">
+      <div className="absolute bottom-5 left-5 z-20 rounded-lg bg-black/60 px-4 py-3 text-xs text-gray-300 backdrop-blur-md">
 
-
-          {/* Solar elevation */}
-
-          <div className="
-            rounded-xl
-            bg-white/5
-            p-3
-          ">
-
-            <div className="
-              text-xs
-              text-gray-400
-            ">
-              SOLAR ELEVATION
-            </div>
-
-            <div className="
-              mt-1
-              text-xl
-              font-bold
-            ">
-
-              {solarElevation !== null
-                ? `${solarElevation.toFixed(1)}°`
-                : "--"}
-
-            </div>
-
-          </div>
-
-
-          {/* Status */}
-
-          <div className="
-            rounded-xl
-            bg-white/5
-            p-3
-          ">
-
-            <div className="
-              text-xs
-              text-gray-400
-            ">
-              SITE CONDITION
-            </div>
-
-            <div
-              className={`
-                mt-1
-                text-xl
-                font-bold
-                ${statusClass}
-              `}
-            >
-
-              {sunlightStatus}
-
-            </div>
-
-          </div>
-
-
-          {/* Coordinates */}
-
-          <div className="
-            rounded-xl
-            bg-white/5
-            p-3
-          ">
-
-            <div className="
-              text-xs
-              text-gray-400
-            ">
-              LANDING SITE
-            </div>
-
-            <div className="
-              mt-1
-              text-sm
-              font-semibold
-            ">
-
-              {latitude.toFixed(2)}°
-
-              {" "}
-
-              {longitude.toFixed(2)}°
-
-            </div>
-
-          </div>
-
+        <div>
+          🌑 Moon 3D Model: NASA
         </div>
 
+        <div>
+          🏔 Terrain: NASA LOLA
+        </div>
 
-        {/* -----------------------------------------------
-            STATUS
-        ------------------------------------------------ */}
-
-        <div className="
-          mt-4
-          text-center
-          text-xs
-          text-gray-500
-        ">
-
-          {loadingSun
-            ? "Updating NASA/JPL Horizons data..."
-            : "NASA/JPL Horizons • Lunar solar geometry"}
-
+        <div>
+          ☀ Ephemeris: NASA/JPL Horizons
         </div>
 
       </div>
 
     </div>
-
   );
 }
 
+/* =========================================================
+   PRELOAD MOON MODEL
+========================================================= */
 
-// ======================================================
-// PRELOAD MOON
-// ======================================================
-
-useGLTF.preload(
-  "/models/moon.glb"
-);
+useGLTF.preload("/models/moon.glb");
