@@ -126,13 +126,13 @@ export default function MoonScene() {
         );
 
         const response = await fetch(
-          `/api/ephemeris?time=${encodeURIComponent(
-            simulationTime
-          )}`,
-          {
-            cache: "no-store",
-          }
-        );
+  `/api/ephemeris?time=${encodeURIComponent(
+    simulationTime ?? ""
+  )}`,
+  {
+    cache: "no-store",
+  }
+);
 
         if (!response.ok) {
           throw new Error(
